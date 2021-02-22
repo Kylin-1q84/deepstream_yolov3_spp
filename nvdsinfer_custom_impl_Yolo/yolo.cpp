@@ -48,9 +48,6 @@ nvinfer1::ICudaEngine *Yolo::createEngine (nvinfer1::IBuilder* builder)
 {
     assert (builder);
 
-    std::vector<float> weights = loadWeights(m_WtsFilePath, m_NetworkType);
-    std::vector<nvinfer1::Weights> trtWeights;
-
     nvinfer1::INetworkDefinition *network = builder->createNetwork();
     if (parseModel(*network) != NVDSINFER_SUCCESS) {
         network->destroy();
