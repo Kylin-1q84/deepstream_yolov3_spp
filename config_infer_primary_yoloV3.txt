@@ -62,13 +62,13 @@ gpu-id=0
 net-scale-factor=0.0039215697906911373
 #0=RGB, 1=BGR
 model-color-format=0
-custom-network-config=yolov3.cfg
-model-file=yolov3.weights
+custom-network-config=yolov3-spp.cfg
+model-file=yolov3-spp.weights
 #model-engine-file=yolov3_b1_gpu0_int8.engine
 labelfile-path=labels.txt
-int8-calib-file=yolov3-calibration.table.trt7.0
+#int8-calib-file=yolov3-calibration.table.trt7.0
 ## 0=FP32, 1=INT8, 2=FP16 mode
-network-mode=1
+network-mode=2
 num-detected-classes=80
 gie-unique-id=1
 network-type=0
