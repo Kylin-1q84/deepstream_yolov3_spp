@@ -1,5 +1,8 @@
+.gitignore
 *.cfg
 *.weights
 nvdsinfer_custom_impl_Yolo/*.o
 nvdsinfer_custom_impl_Yolo/*.so
 streams/*
+*table*
+*txt
