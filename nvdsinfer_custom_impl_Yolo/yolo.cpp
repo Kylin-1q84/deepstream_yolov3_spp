@@ -56,6 +56,12 @@ nvinfer1::ICudaEngine *Yolo::createEngine (nvinfer1::IBuilder* builder)
 
     // Build the engine
     std::cout << "Building the TensorRT Engine..." << std::endl;
+    
+    nvinfer1::IBuilderConfig* config = builder->createBuilderConfig();
+    config->setMaxWorkspaceSize(1<<20);
+	config->setFlag(nvinfer1::BuilderFlag::kINT8);
+	config->setInt8Calibrator(calibrator);
+
     nvinfer1::ICudaEngine * engine = builder->buildCudaEngine(*network);
     if (engine) {
         std::cout << "Building complete!" << std::endl;
