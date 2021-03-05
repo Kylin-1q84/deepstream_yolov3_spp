@@ -24,6 +24,12 @@
 #ifndef __TRT_UTILS_H__
 #define __TRT_UTILS_H__
 
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/dnn/dnn.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
 #include <set>
 #include <map>
 #include <string>
@@ -34,12 +40,33 @@
 
 #include "NvInfer.h"
 
+#include "ds_image.h"
+
+//#include "logging.h"
+class DsImage;
+struct BBox
+{
+    float x1, y1, x2, y2;
+};
+
+struct BBoxInfo
+{
+    BBox box;
+    int label;
+    int classId; // For coco benchmarking
+    float prob;
+};
+
 #define UNUSED(expr) (void)(expr)
 #define DIVUP(n, d) ((n) + (d)-1) / (d)
 
+cv::Mat blobFromDsImages(const std::vector<DsImage>& inputImages, const int& inputH,
+                         const int& inputW);
 std::string trim(std::string s);
 float clamp(const float val, const float minVal, const float maxVal);
 bool fileExists(const std::string fileName, bool verbose = true);
+std::vector<std::string> loadListFromTextFile(const std::string filename);
+std::vector<std::string> loadImageList(const std::string filename, const std::string prefix);
 std::vector<float> loadWeights(const std::string weightsFilePath, const std::string& networkType);
 std::string dimsToString(const nvinfer1::Dims d);
 void displayDimType(const nvinfer1::Dims d);

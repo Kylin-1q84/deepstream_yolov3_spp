@@ -47,6 +47,52 @@ const char* YOLOV3LAYER_PLUGIN_VERSION {"1"};
 const char* YOLOV3LAYER_PLUGIN_NAME {"YoloLayerV3_TRT"};
 } // namespace
 
+cudaError_t cudaYoloLayerV3(const void* input, void* output, const uint32_t& batchSize,
+	const uint32_t& n_grid_h_, const uint32_t& n_grid_w_,
+	const uint32_t& numOutputClasses, const uint32_t& numBBoxes,
+	uint64_t outputSize, cudaStream_t stream);
+
+class YoloLayerV32 : public nvinfer1::IPlugin
+{
+public:
+    YoloLayerV32(const void* data, size_t length);
+    YoloLayerV32(const uint32_t& numBoxes, const uint32_t& numClasses, const uint32_t& grid_h_,const uint32_t &grid_w_);
+    int getNbOutputs() const override;
+    nvinfer1::Dims getOutputDimensions(int index, const nvinfer1::Dims* inputs,
+                                       int nbInputDims) override;
+    void configure(const nvinfer1::Dims* inputDims, int nbInputs, const nvinfer1::Dims* outputDims,
+                   int nbOutputs, int maxBatchSize) override;
+    int initialize() override;
+    void terminate() override;
+    size_t getWorkspaceSize(int maxBatchSize) const override;
+    int enqueue(int batchSize, const void* const* intputs, void** outputs, void* workspace,
+                cudaStream_t stream) override;
+    size_t getSerializationSize() override;
+    void serialize(void* buffer) override;
+
+private:
+    template <typename T>
+    void write(char*& buffer, const T& val)
+    {
+        *reinterpret_cast<T*>(buffer) = val;
+        buffer += sizeof(T);
+    }
+
+    template <typename T>
+    void read(const char*& buffer, T& val)
+    {
+        val = *reinterpret_cast<const T*>(buffer);
+        buffer += sizeof(T);
+    }
+    uint32_t m_NumBoxes;
+    uint32_t m_NumClasses;
+    uint32_t m_GridSize;
+    uint64_t m_OutputSize;
+	uint32_t _n_grid_h;
+	uint32_t _n_grid_w;
+};
+
+
 class YoloLayerV3 : public nvinfer1::IPluginV2
 {
 public:

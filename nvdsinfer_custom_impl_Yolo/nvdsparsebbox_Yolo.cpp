@@ -30,7 +30,7 @@
 #include "nvdsinfer_custom_impl.h"
 #include "trt_utils.h"
 
-static const int NUM_CLASSES_YOLO = 80;
+static const int NUM_CLASSES_YOLO = 1;
 
 extern "C" bool NvDsInferParseCustomYoloV3(
     std::vector<NvDsInferLayerInfo> const& outputLayersInfo,

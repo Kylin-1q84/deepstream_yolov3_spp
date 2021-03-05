@@ -125,3 +125,74 @@ nvinfer1::IPluginV2* YoloLayerV3::clone() const
 }
 
 REGISTER_TENSORRT_PLUGIN(YoloLayerV3PluginCreator);
+
+YoloLayerV32::YoloLayerV32(const void* data, size_t length)
+{
+    const char *d = static_cast<const char*>(data), *a = d;
+    read(d, m_NumBoxes);
+    read(d, m_NumClasses);
+    read(d,_n_grid_h);
+    read(d,_n_grid_w);
+    read(d, m_OutputSize);
+    assert(d = a + length);
+}
+
+YoloLayerV32::YoloLayerV32(const uint32_t& numBoxes, const uint32_t& numClasses, const uint32_t& grid_h_,const uint32_t &grid_w_):
+    m_NumBoxes(numBoxes),
+    m_NumClasses(numClasses),
+    _n_grid_h(grid_h_),
+	_n_grid_w(grid_w_)
+{
+    assert(m_NumBoxes > 0);
+    assert(m_NumClasses > 0);
+	assert(_n_grid_h > 0);
+	assert(_n_grid_w > 0);
+    m_OutputSize = _n_grid_h * _n_grid_w * (m_NumBoxes * (4 + 1 + m_NumClasses));
+}
+
+int YoloLayerV32::getNbOutputs() const { return 1; }
+
+nvinfer1::Dims YoloLayerV32::getOutputDimensions(int index, const nvinfer1::Dims* inputs,
+                                                int nbInputDims)
+{
+    assert(index == 0);
+    assert(nbInputDims == 1);
+    return inputs[0];
+}
+
+void YoloLayerV32::configure(const nvinfer1::Dims* inputDims, int nbInputs,
+                            const nvinfer1::Dims* outputDims, int nbOutputs, int maxBatchSize)
+{
+    assert(nbInputs == 1);
+    assert(inputDims != nullptr);
+}
+
+int YoloLayerV32::initialize() { return 0; }
+
+void YoloLayerV32::terminate() {}
+
+size_t YoloLayerV32::getWorkspaceSize(int maxBatchSize) const { return 0; }
+
+int YoloLayerV32::enqueue(int batchSize, const void* const* inputs, void** outputs, void* workspace,
+                         cudaStream_t stream)
+{
+    cudaYoloLayerV3(inputs[0], outputs[0], batchSize,_n_grid_h,_n_grid_w, m_NumClasses,
+                                  m_NumBoxes, m_OutputSize, stream);
+    return 0;
+}
+
+size_t YoloLayerV32::getSerializationSize()
+{
+    return sizeof(m_NumBoxes) + sizeof(m_NumClasses) + sizeof(_n_grid_w)+sizeof(_n_grid_h) + sizeof(m_OutputSize);
+}
+
+void YoloLayerV32::serialize(void* buffer)
+{
+    char *d = static_cast<char*>(buffer), *a = d;
+    write(d, m_NumBoxes);
+    write(d, m_NumClasses);
+    write(d,_n_grid_h);
+    write(d,_n_grid_w);
+    write(d, m_OutputSize);
+    assert(d == a + getSerializationSize());
+}

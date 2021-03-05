@@ -31,6 +31,64 @@
 
 #include "NvInferPlugin.h"
 
+cv::Mat blobFromDsImages(const std::vector<DsImage>& inputImages,
+						const int& inputH,
+                         const int& inputW)
+{
+    std::vector<cv::Mat> letterboxStack(inputImages.size());
+    for (uint32_t i = 0; i < inputImages.size(); ++i)
+    {
+        inputImages.at(i).getLetterBoxedImage().copyTo(letterboxStack.at(i));
+    }
+    return cv::dnn::blobFromImages(letterboxStack, 1.0, cv::Size(inputW, inputH),
+                                   cv::Scalar(0.0, 0.0, 0.0),true);
+}
+
+std::vector<std::string> loadListFromTextFile(const std::string filename)
+{
+    assert(fileExists(filename));
+    std::vector<std::string> list;
+
+    std::ifstream f(filename);
+    if (!f)
+    {
+        std::cout << "failed to open " << filename;
+        assert(0);
+    }
+
+    std::string line;
+    while (std::getline(f, line))
+    {
+        if (line.empty())
+            continue;
+
+        else
+            list.push_back(trim(line));
+    }
+
+    return list;
+}
+
+std::vector<std::string> loadImageList(const std::string filename, const std::string prefix)
+{
+    std::vector<std::string> fileList = loadListFromTextFile(filename);
+    for (auto& file : fileList)
+    {
+        if (fileExists(file, false))
+            continue;
+        else
+        {
+            std::string prefixed = prefix + file;
+            if (fileExists(prefixed, false))
+                file = prefixed;
+            else
+                std::cerr << "WARNING: couldn't find: " << prefixed
+                          << " while loading: " << filename << std::endl;
+        }
+    }
+    return fileList;
+}
+
 static void leftTrim(std::string& s)
 {
     s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](int ch) { return !isspace(ch); }));
@@ -373,6 +431,26 @@ nvinfer1::ILayer* netAddUpsample(int layerIdx, std::map<std::string, std::string
     assert(block.at("type") == "upsample");
     nvinfer1::Dims inpDims = input->getDimensions();
     assert(inpDims.nbDims == 3);
+   // assert(inpDims.d[1] == inpDims.d[2]);
+    int n_scale = std::stoi(block.at("stride"));
+
+	int c1 = inpDims.d[0];
+	float *deval = new float[c1*n_scale*n_scale];
+	for (int i = 0; i < c1*n_scale*n_scale; i++)
+	{
+		deval[i] = 1.0;
+	}
+	nvinfer1::Weights wts{ nvinfer1::DataType::kFLOAT, deval, c1*n_scale*n_scale };
+	nvinfer1::Weights bias{ nvinfer1::DataType::kFLOAT, nullptr, 0 };
+	nvinfer1::IDeconvolutionLayer* upsample = network->addDeconvolutionNd(*input, c1, nvinfer1::DimsHW{ n_scale, n_scale }, wts, bias);
+	upsample->setStrideNd(nvinfer1::DimsHW{ n_scale, n_scale });
+	upsample->setNbGroups(c1);
+	return upsample;
+    
+    /*    
+    assert(block.at("type") == "upsample");
+    nvinfer1::Dims inpDims = input->getDimensions();
+    assert(inpDims.nbDims == 3);
     assert(inpDims.d[1] == inpDims.d[2]);
     int h = inpDims.d[1];
     int w = inpDims.d[2];
@@ -385,7 +463,7 @@ nvinfer1::ILayer* netAddUpsample(int layerIdx, std::map<std::string, std::string
     int size = stride * h * w;
     nvinfer1::Weights preMul{nvinfer1::DataType::kFLOAT, nullptr, size};
     float* preWt = new float[size];
-    /* (2*h * w)
+     (2*h * w)
     [ [1, 0, ..., 0],
       [1, 0, ..., 0],
       [0, 1, ..., 0],
@@ -394,7 +472,7 @@ nvinfer1::ILayer* netAddUpsample(int layerIdx, std::map<std::string, std::string
       ...,
       [0, 0, ..., 1],
       [0, 0, ..., 1] ]
-    */
+    
     for (int i = 0, idx = 0; i < h; ++i)
     {
         for (int s = 0; s < stride; ++s)
@@ -419,13 +497,13 @@ nvinfer1::ILayer* netAddUpsample(int layerIdx, std::map<std::string, std::string
     size = stride * h * w;
     nvinfer1::Weights postMul{nvinfer1::DataType::kFLOAT, nullptr, size};
     float* postWt = new float[size];
-    /* (h * 2*w)
+     (h * 2*w)
     [ [1, 1, 0, 0, ..., 0, 0],
       [0, 0, 1, 1, ..., 0, 0],
       ...,
       ...,
       [0, 0, 0, 0, ..., 1, 1] ]
-    */
+    
     for (int i = 0, idx = 0; i < h; ++i)
     {
         for (int j = 0; j < stride * w; ++j, ++idx)
@@ -452,7 +530,7 @@ nvinfer1::ILayer* netAddUpsample(int layerIdx, std::map<std::string, std::string
     assert(mm2 != nullptr);
     std::string mm2LayerName = "mm2_" + std::to_string(layerIdx);
     mm2->setName(mm2LayerName.c_str());
-    return mm2;
+    return mm2;*/
 }
 
 void printLayerInfo(std::string layerIndex, std::string layerName, std::string layerInput,

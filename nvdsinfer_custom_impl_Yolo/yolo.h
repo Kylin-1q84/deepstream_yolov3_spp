@@ -31,6 +31,10 @@
 #include "NvInfer.h"
 #include "trt_utils.h"
 
+#include "calibrator.h"
+#include "cuda_runtime_api.h"
+#include "opencv2/opencv.hpp"
+
 #include "nvdsinfer_custom_impl.h"
 
 /**
@@ -51,12 +55,16 @@ struct NetworkInfo
 struct TensorInfo
 {
     std::string blobName;
-    uint stride{0};
-    uint gridSize{0};
-    uint numClasses{0};
-    uint numBBoxes{0};
+    uint32_t stride{0};
+    uint32_t stride_h{0};
+    uint32_t stride_w{0};
+    uint32_t gridSize{0};
+	uint32_t grid_h{ 0 };
+	uint32_t grid_w{ 0 };
+    uint32_t numClasses{0};
+    uint32_t numBBoxes{0};
     uint64_t volume{0};
-    std::vector<uint> masks;
+    std::vector<uint32_t> masks;
     std::vector<float> anchors;
     int bindingIndex{-1};
     float* hostBuffer{nullptr};

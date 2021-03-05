@@ -27,7 +27,13 @@ endif
 CC:= g++
 NVCC:=/usr/local/cuda-$(CUDA_VER)/bin/nvcc
 
-CFLAGS:= -Wall -std=c++11 -shared -fPIC -Wno-error=deprecated-declarations
+COMMON:= -DOPENCV
+CFLAGS:= -DOPENCV
+
+COMMON+= `pkg-config --cflags opencv4`
+LDFLAGS:= `pkg-config --libs opencv4` 
+
+CFLAGS+= -Wall -std=c++11 -shared -fPIC -Wno-error=deprecated-declarations
 CFLAGS+= -I../includes -I/usr/local/cuda-$(CUDA_VER)/include
 
 LIBS:= -lnvinfer_plugin -lnvinfer -lnvparsers -L/usr/local/cuda-$(CUDA_VER)/lib64 -lcudart -lcublas -lstdc++fs
@@ -38,7 +44,9 @@ SRCFILES:= nvdsinfer_yolo_engine.cpp \
            nvdsparsebbox_Yolo.cpp   \
            yoloPlugins.cpp    \
            trt_utils.cpp              \
-           yolo.cpp              \
+           ds_image.cpp \
+           calibrator.cpp \
+           yolo.cpp \
            kernels.cu
 TARGET_LIB:= libnvdsinfer_custom_impl_Yolo.so
 
@@ -48,13 +56,13 @@ TARGET_OBJS:= $(TARGET_OBJS:.cu=.o)
 all: $(TARGET_LIB)
 
 %.o: %.cpp $(INCS) Makefile
-	$(CC) -c -o $@ $(CFLAGS) $<
+	$(CC) $(COMMON) -c -o $@ $(CFLAGS) $(LDFLAGS) $<
 
 %.o: %.cu $(INCS) Makefile
 	$(NVCC) -c -o $@ --compiler-options '-fPIC' $<
 
 $(TARGET_LIB) : $(TARGET_OBJS)
-	$(CC) -o $@  $(TARGET_OBJS) $(LFLAGS)
+	$(CC) -o $@  $(TARGET_OBJS) $(LFLAGS) $(LDFLAGS) $(CFLAGS)
 
 clean:
 	rm -rf $(TARGET_LIB)

@@ -56,13 +56,15 @@ nvinfer1::ICudaEngine *Yolo::createEngine (nvinfer1::IBuilder* builder)
 
     // Build the engine
     std::cout << "Building the TensorRT Engine..." << std::endl;
-    
+    Int8EntropyCalibrator calibrator( 1, "./coco.txt", "", "coco.table", 1108992 , 608, 608, "data", "yolov3");
     nvinfer1::IBuilderConfig* config = builder->createBuilderConfig();
-    config->setMaxWorkspaceSize(1<<20);
+    config->setMaxWorkspaceSize(1<<30);
 	config->setFlag(nvinfer1::BuilderFlag::kINT8);
-	config->setInt8Calibrator(calibrator);
+	config->setInt8Calibrator(&calibrator);
 
-    nvinfer1::ICudaEngine * engine = builder->buildCudaEngine(*network);
+    nvinfer1::ICudaEngine * engine = builder->buildEngineWithConfig(*network,*config);
+    //nvinfer1::ICudaEngine * engine = builder->buildCudaEngine(*network);
+
     if (engine) {
         std::cout << "Building complete!" << std::endl;
     } else {
@@ -92,6 +94,32 @@ NvDsInferStatus Yolo::parseModel(nvinfer1::INetworkDefinition& network) {
     }
 
     return status;
+}
+nvinfer1::ILayer * layer_split(const int n_layer_index_,
+	nvinfer1::ITensor *input_,
+	nvinfer1::INetworkDefinition* network)
+{
+	auto creator = getPluginRegistry()->getPluginCreator("CHUNK_TRT", "1.0");
+	const nvinfer1::PluginFieldCollection* pluginData = creator->getFieldNames();
+	nvinfer1::IPluginV2 *pluginObj = creator->createPlugin(("chunk" + std::to_string(n_layer_index_)).c_str(), pluginData);
+	auto chunk = network->addPluginV2(&input_, 1, *pluginObj);
+	return chunk;
+}
+
+std::vector<int> split_layer_index(const std::string &s_,const std::string &delimiter_)
+{
+	std::vector<int> index;
+	std::string s = s_;
+	size_t pos = 0;
+	std::string token;
+	while ((pos = s.find(delimiter_)) != std::string::npos) 
+	{
+		token = s.substr(0, pos);
+		index.push_back(std::stoi(trim(token)));
+		s.erase(0, pos + delimiter_.length());
+	}
+	index.push_back(std::stoi(trim(s)));
+	return index;
 }
 
 NvDsInferStatus Yolo::buildYoloNetwork(
@@ -163,23 +191,27 @@ NvDsInferStatus Yolo::buildYoloNetwork(
             tensorOutputs.push_back(ew->getOutput(0));
             printLayerInfo(layerIndex, "skip", inputVol, outputVol, "    -");
         } else if (m_ConfigBlocks.at(i).at("type") == "yolo") {
-            nvinfer1::Dims prevTensorDims = previous->getDimensions();
-            assert(prevTensorDims.d[1] == prevTensorDims.d[2]);
+           nvinfer1::Dims prevTensorDims = previous->getDimensions();
+           // assert(prevTensorDims.d[1] == prevTensorDims.d[2]);
             TensorInfo& curYoloTensor = m_OutputTensors.at(outputTensorCount);
             curYoloTensor.gridSize = prevTensorDims.d[1];
+            curYoloTensor.grid_h = prevTensorDims.d[1];
+            curYoloTensor.grid_w = prevTensorDims.d[2];
             curYoloTensor.stride = m_InputW / curYoloTensor.gridSize;
-            m_OutputTensors.at(outputTensorCount).volume = curYoloTensor.gridSize
-                * curYoloTensor.gridSize
+            curYoloTensor.stride_h = m_InputH / curYoloTensor.grid_h;
+            curYoloTensor.stride_w = m_InputW / curYoloTensor.grid_w;
+            m_OutputTensors.at(outputTensorCount).volume = curYoloTensor.grid_h
+                * curYoloTensor.grid_w
                 * (curYoloTensor.numBBoxes * (5 + curYoloTensor.numClasses));
             std::string layerName = "yolo_" + std::to_string(i);
             curYoloTensor.blobName = layerName;
-            nvinfer1::IPluginV2* yoloPlugin
-                = new YoloLayerV3(m_OutputTensors.at(outputTensorCount).numBBoxes,
+            nvinfer1::IPlugin* yoloPlugin
+                = new YoloLayerV32(m_OutputTensors.at(outputTensorCount).numBBoxes,
                                   m_OutputTensors.at(outputTensorCount).numClasses,
-                                  m_OutputTensors.at(outputTensorCount).gridSize);
+                                  m_OutputTensors.at(outputTensorCount).grid_h,
+                                  m_OutputTensors.at(outputTensorCount).grid_w);
             assert(yoloPlugin != nullptr);
-            nvinfer1::IPluginV2Layer* yolo =
-                network.addPluginV2(&previous, 1, *yoloPlugin);
+            nvinfer1::IPluginLayer* yolo = network.addPlugin(&previous, 1, *yoloPlugin);
             assert(yolo != nullptr);
             yolo->setName(layerName.c_str());
             std::string inputVol = dimsToString(previous->getDimensions());
@@ -245,45 +277,83 @@ NvDsInferStatus Yolo::buildYoloNetwork(
         }
         // route layers (single or concat)
         else if (m_ConfigBlocks.at(i).at("type") == "route") {
-            std::string strLayers = m_ConfigBlocks.at(i).at("layers");
-            std::vector<int> idxLayers;
-            size_t lastPos = 0, pos = 0;
-            while ((pos = strLayers.find(',', lastPos)) != std::string::npos) {
-                int vL = std::stoi(trim(strLayers.substr(lastPos, pos - lastPos)));
-                idxLayers.push_back (vL);
-                lastPos = pos + 1;
-            }
-            if (lastPos < strLayers.length()) {
-                std::string lastV = trim(strLayers.substr(lastPos));
-                if (!lastV.empty()) {
-                    idxLayers.push_back (std::stoi(lastV));
+            size_t found = m_ConfigBlocks.at(i).at("layers").find(",");
+            if (found != std::string::npos)//concate multi layers 
+            {
+				std::vector<int> vec_index = split_layer_index(m_ConfigBlocks.at(i).at("layers"), ",");
+				for (auto &ind_layer:vec_index)
+				{
+					if (ind_layer < 0)
+					{
+						ind_layer = static_cast<int>(tensorOutputs.size()) + ind_layer;
+					}
+					assert(ind_layer < static_cast<int>(tensorOutputs.size()) && ind_layer >= 0);
+				}
+                nvinfer1::ITensor** concatInputs
+                    = reinterpret_cast<nvinfer1::ITensor**>(malloc(sizeof(nvinfer1::ITensor*) * vec_index.size()));
+                for (size_t ind = 0; ind < vec_index.size(); ++ind)
+				{
+					concatInputs[ind] = tensorOutputs[vec_index[ind]];
+				}
+                nvinfer1::IConcatenationLayer* concat
+                    = network.addConcatenation(concatInputs, static_cast<int>(vec_index.size()));
+                assert(concat != nullptr);
+                std::string concatLayerName = "route_" + std::to_string(i - 1);
+                concat->setName(concatLayerName.c_str());
+                // concatenate along the channel dimension
+                concat->setAxis(0);
+                previous = concat->getOutput(0);
+                assert(previous != nullptr);
+				nvinfer1::Dims debug = previous->getDimensions();
+                std::string outputVol = dimsToString(previous->getDimensions());
+				int nums = 0;
+				for (auto &indx:vec_index)
+				{
+					nums += getNumChannels(tensorOutputs[indx]);
+				}
+				channels = nums;
+                tensorOutputs.push_back(concat->getOutput(0));
+                printLayerInfo(layerIndex, "route", "        -", outputVol,std::to_string(weightPtr));
+                 }
+            else //single layer
+            {
+                int idx = std::stoi(trim(m_ConfigBlocks.at(i).at("layers")));
+                if (idx < 0)
+                {
+                    idx = static_cast<int>(tensorOutputs.size()) + idx;
                 }
+                assert(idx < static_cast<int>(tensorOutputs.size()) && idx >= 0);
+
+				//route
+				if (m_ConfigBlocks.at(i).find("groups") == m_ConfigBlocks.at(i).end())
+				{
+					previous = tensorOutputs[idx];
+					assert(previous != nullptr);
+					std::string outputVol = dimsToString(previous->getDimensions());
+					// set the output volume depth
+					channels = getNumChannels(tensorOutputs[idx]);
+					tensorOutputs.push_back(tensorOutputs[idx]);
+					printLayerInfo(layerIndex, "route", "        -", outputVol, std::to_string(weightPtr));
+
+				}
+				//yolov4-tiny route split layer
+				else
+				{
+					if (m_ConfigBlocks.at(i).find("group_id") == m_ConfigBlocks.at(i).end())
+					{
+						assert(0);
+					}
+					int chunk_idx = std::stoi(trim(m_ConfigBlocks.at(i).at("group_id")));
+					nvinfer1::ILayer* out = layer_split(i, tensorOutputs[idx], &network);
+					std::string inputVol = dimsToString(previous->getDimensions());
+					previous = out->getOutput(chunk_idx);
+					assert(previous != nullptr);
+					channels = getNumChannels(previous);
+					std::string outputVol = dimsToString(previous->getDimensions());
+					tensorOutputs.push_back(out->getOutput(chunk_idx));
+					printLayerInfo(layerIndex,"chunk", inputVol, outputVol, std::to_string(weightPtr));
+				}
             }
-            assert (!idxLayers.empty());
-            std::vector<nvinfer1::ITensor*> concatInputs;
-            for (int idxLayer : idxLayers) {
-                if (idxLayer < 0) {
-                    idxLayer = tensorOutputs.size() + idxLayer;
-                }
-                assert (idxLayer >= 0 && idxLayer < (int)tensorOutputs.size());
-                concatInputs.push_back (tensorOutputs[idxLayer]);
-            }
-            nvinfer1::IConcatenationLayer* concat =
-                network.addConcatenation(concatInputs.data(), concatInputs.size());
-            assert(concat != nullptr);
-            std::string concatLayerName = "route_" + std::to_string(i - 1);
-            concat->setName(concatLayerName.c_str());
-            // concatenate along the channel dimension
-            concat->setAxis(0);
-            previous = concat->getOutput(0);
-            assert(previous != nullptr);
-            std::string outputVol = dimsToString(previous->getDimensions());
-            // set the output volume depth
-            channels
-                = getNumChannels(previous);
-            tensorOutputs.push_back(concat->getOutput(0));
-            printLayerInfo(layerIndex, "route", "        -", outputVol,
-                           std::to_string(weightPtr));
         } else if (m_ConfigBlocks.at(i).at("type") == "upsample") {
             std::string inputVol = dimsToString(previous->getDimensions());
             nvinfer1::ILayer* out = netAddUpsample(i - 1, m_ConfigBlocks[i],
@@ -326,6 +396,7 @@ NvDsInferStatus Yolo::buildYoloNetwork(
 
     return NVDSINFER_SUCCESS;
 }
+
 
 std::vector<std::map<std::string, std::string>>
 Yolo::parseConfigFile (const std::string cfgFilePath)
