@@ -20,7 +20,7 @@ Test TRT engine file
 ```
 
 # Deepstream with TRT
-Move the engine file to '/home/eslab/workspace/deepstream_SIA/engine'
+Move the engine file to '/home/eslab/workspace/deepstream_SIA/engine'   
 Open 'deepstream_app_config_fasterRCNN.txt' config file and change the engine path
 
 ```
@@ -34,5 +34,28 @@ labelfile-path=labels.txt
 model-engine-file=engine/fastest.engine
 config-file=config_infer_primary_fasterRCNN.txt
 nvbuf-memory-type=0
-
 ```
+
+The defalut input image size is 1024,  ( Video has the 1536x1536, It is resize to 1024 )   
+If you want change, modify config file 'deepstream_app_config_fasterRCNN.txt'
+```
+[tiled-display]
+enable=0
+rows=1
+columns=1
+width=1024
+height=1024
+gpu-id=0
+nvbuf-memory-type=0
+
+[streammux]
+gpu-id=0
+batch-size=1
+batched-push-timeout=-1
+## Set muxer output width and height
+width=1280
+height=720
+nvbuf-memory-type=0
+```
+
+
