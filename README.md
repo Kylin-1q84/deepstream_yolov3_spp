@@ -31,7 +31,7 @@ batch-size=1
 gie-unique-id=1
 interval=0
 labelfile-path=labels.txt
-model-engine-file=engine/fastest.engine
+model-engine-file=engine/fastest.engine # hear
 config-file=config_infer_primary_fasterRCNN.txt
 nvbuf-memory-type=0
 ```
@@ -43,8 +43,8 @@ If you want change, modify config file 'deepstream_app_config_fasterRCNN.txt'
 enable=0
 rows=1
 columns=1
-width=1024
-height=1024
+width=1024 #hear
+height=1024 #hear
 gpu-id=0
 nvbuf-memory-type=0
 
@@ -53,9 +53,10 @@ gpu-id=0
 batch-size=1
 batched-push-timeout=-1
 ## Set muxer output width and height
-width=1280
-height=720
+width=1024 #hear
+height=1024 #hear
 nvbuf-memory-type=0
 ```
+
 
 
