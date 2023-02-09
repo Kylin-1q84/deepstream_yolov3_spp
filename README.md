@@ -74,3 +74,5 @@ camera-v4l2-dev-node=0
 drop-frame-interval=5
 ```
 
+If you need more configuration, you can find this link   
+https://docs.nvidia.com/metropolis/deepstream/5.0.1/dev-guide/index.html
