@@ -58,5 +58,19 @@ height=1024 #hear
 nvbuf-memory-type=0
 ```
 
-
+In the defalut setting, Yon can only use the file input,   
+If you want to change cam, modify this
+```
+[source0]
+enable=1
+num-sources=2
+type=1
+camera-width=1920
+camera-height=1080
+camera-fps-n=65
+camera-fps-d=1
+camera-csi-sensor-id=1
+camera-v4l2-dev-node=0
+drop-frame-interval=5
+```
 
